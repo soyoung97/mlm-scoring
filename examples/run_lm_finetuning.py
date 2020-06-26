@@ -137,15 +137,18 @@ class BERTDataset(Dataset):
         cur_example = InputExample(guid=cur_id, tokens_a=tokens_a, tokens_b=tokens_b, is_next=is_next_label)
 
         # transform sample to features
-        cur_features = convert_example_to_features(cur_example, self.seq_len, self.tokenizer)
+        cur_tensor_list = [None] * self.seq_len
+        for i in range(self.seq_len):
+            cur_features = convert_example_to_features(cur_example, self.seq_len, self.tokenizer)
 
-        cur_tensors = (torch.tensor(cur_features.input_ids),
-                       torch.tensor(cur_features.input_mask),
-                       torch.tensor(cur_features.segment_ids),
-                       torch.tensor(cur_features.lm_label_ids),
-                       torch.tensor(cur_features.is_next))
+            cur_tensors = (torch.tensor(cur_features.input_ids),
+                           torch.tensor(cur_features.input_mask),
+                           torch.tensor(cur_features.segment_ids),
+                           torch.tensor(cur_features.lm_label_ids),
+                           torch.tensor(cur_features.is_next))
+            cur_tensor_list[i] = cur_tensors
 
-        return cur_tensors
+        return cur_tensor_list
 
     def random_sent(self, index):
         """
@@ -591,10 +594,12 @@ def main():
         for _ in trange(int(args.num_train_epochs), desc="Epoch"):
             tr_loss = 0
             nb_tr_examples, nb_tr_steps = 0, 0
-            for step, batch in enumerate(tqdm(train_dataloader, desc="Iteration")):
-                batch = tuple(t.to(device) for t in batch)
-                input_ids, input_mask, segment_ids, lm_label_ids, is_next = batch
-                loss = model(input_ids, segment_ids, input_mask, lm_label_ids, is_next)
+            for step, batches in enumerate(tqdm(train_dataloader, desc="Iteration")):
+                loss = 0
+                for batch in batches:
+                    #batch = tuple(t.to(device) for t in batch)
+                    input_ids, input_mask, segment_ids, lm_label_ids, is_next = batch
+                    loss += model(input_ids, segment_ids, input_mask, lm_label_ids, is_next) # sum each loss
                 if n_gpu > 1:
                     loss = loss.mean() # mean() to average on multi-gpu.
                 if args.gradient_accumulation_steps > 1:
