@@ -696,13 +696,24 @@ class BertForPreTraining(PreTrainedBertModel):
     def forward(self, input_ids, token_type_ids=None, attention_mask=None, masked_lm_labels=None, next_sentence_label=None):
         sequence_output, pooled_output = self.bert(input_ids, token_type_ids, attention_mask,
                                                    output_all_encoded_layers=False)
+        # seq output:  32 128 768
+        # pool output: 32 768
+        # 128 is seq len
         prediction_scores, seq_relationship_score = self.cls(sequence_output, pooled_output)
-
+        # pred score 32 128 28996
+        # seq rel score 32 2
         if masked_lm_labels is not None and next_sentence_label is not None:
-            loss_fct = CrossEntropyLoss(ignore_index=-1)
-            masked_lm_loss = loss_fct(prediction_scores.view(-1, self.config.vocab_size), masked_lm_labels.view(-1))
-            next_sentence_loss = loss_fct(seq_relationship_score.view(-1, 2), next_sentence_label.view(-1))
-            total_loss = masked_lm_loss + next_sentence_loss
+            total_loss = 0
+            for batch_idx in range(input_ids.shape[0]):
+                # prediction_scores[batch_idx, sequence_idx, vocab_idx] # what to compute
+                sequence_idx = torch.where(masked_lm_labels[batch_idx] != -1)[0].data[0]
+                vocab_idx = masked_lm_labels[batch_idx, torch.where(masked_lm_labels[batch_idx]!=-1)[0].data[0]]
+                tmp_loss = torch.log10(prediction_scores.softmax(dim=2)[batch_idx, sequence_idx, vocab_idx])
+                
+                total_loss -= tmp_loss
+                # loss_fct = CrossEntropyLoss(ignore_index=-1)
+                # masked_lm_loss = loss_fct(prediction_scores.view(-1, self.config.vocab_size), masked_lm_labels.view(-1))
+                # next_sentence_loss = loss_fct(seq_relationship_score.view(-1, 2), next_sentence_label.view(-1))
             return total_loss
         else:
             return prediction_scores, seq_relationship_score
@@ -1186,3 +1197,4 @@ class BertForQuestionAnswering(PreTrainedBertModel):
             return total_loss
         else:
             return start_logits, end_logits
+
